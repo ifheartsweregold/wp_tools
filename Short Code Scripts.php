@@ -14,7 +14,7 @@ function page_title_sc( ){
 add_shortcode( 'page_title', 'page_title_sc' );
 
 
-// Shortcode for Getting Custom Field
+// Shortcode for Getting Custom Field - Gets First Word 
 function custom_field_type( ){
  $acf_relational_field = "**ENTER ACF RELATIONAL FIELD HERE**";      
  custom_field_type = strtok(get_field($acf_relational_field, false, false), " ");
