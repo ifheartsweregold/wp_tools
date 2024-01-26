@@ -112,3 +112,41 @@ function custom_menu_page_removing() {
         remove_menu_page( 'avada-white-label-branding-admin' );
 }
 add_action( 'admin_menu', 'custom_menu_page_removing' );
+
+
+
+
+// Prevent Duplicate Post Slugs
+function prevent_slug_duplicates( $slug, $post_ID, $post_status, $post_type, $post_parent, $original_slug ) {
+$custom_post_type = "**insert custom post type here**"    
+$check_post_types = array(
+        'post',
+        'page',
+        $custom_post_type
+    );
+    
+    if ( ! in_array( $post_type, $check_post_types ) ) {
+        return $slug;
+    }
+
+    if ( $custom_post_type == $post_type ) {
+        // Saving a custom_post_type post, check for duplicates in POST or PAGE post types
+        $post_match = get_page_by_path( $slug, 'OBJECT', 'post' );
+        $page_match = get_page_by_path( $slug, 'OBJECT', 'page' );
+
+        if ( $post_match || $page_match ) {
+            $slug .= '-2';
+        }
+    } else {
+        // Saving a POST or PAGE, check for duplicates in custom_post_type post type
+        $custom_post_type_match = get_page_by_path( $slug, 'OBJECT', $custom_post_type );
+
+        if ( $custom_post_type_match ) {
+            $slug .= '-2';
+        }
+    }
+
+    return $slug;
+}
+add_filter( 'wp_unique_post_slug', 'prevent_slug_duplicates', 10, 6 );
+// End Duplicate Post Slugs
