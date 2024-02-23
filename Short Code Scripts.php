@@ -13,6 +13,15 @@ function page_title_sc( ){
 }
 add_shortcode( 'page_title', 'page_title_sc' );
 
+// Shortcode to get Yoast Target Term
+function get_yoast_term_post_meta( ) {
+	return get_post_meta(get_the_ID(), '_yoast_wpseo_focuskw', true );
+}
+add_shortcode( 'yoast_term', 'get_yoast_term_post_meta' );
+
+
+
+
 
 // Shortcode for Getting Custom Field - Gets First Word 
 function custom_field_type( ){
