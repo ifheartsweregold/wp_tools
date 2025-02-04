@@ -1,4 +1,79 @@
 <?php
+
+// Load Styles and Scripts names in footer for dequeue 
+/*
+add_action('wp_footer', function() {
+    if (is_admin()) return; // Prevent this from running in the WordPress admin area
+
+    echo "<!-- Styles Loaded -->\n";
+    global $wp_styles;
+    foreach ($wp_styles->queue as $style) {
+        echo "<!-- Style: " . $style . " -->\n";
+    }
+
+    echo "<!-- Scripts Loaded -->\n";
+    global $wp_scripts;
+    foreach ($wp_scripts->queue as $script) {
+        echo "<!-- Script: " . $script . " -->\n";
+    }
+}, 999);
+
+*/
+
+// Disable Plugins, Scripts & Styles based on page rules
+function disable_plugins_and_assets_conditionally($plugins) {
+    // Get current URL
+    $current_url = $_SERVER['REQUEST_URI'];
+
+    // Define the specific plugins to disable
+    $plugins_to_disable = [
+        'advanced-coupons-for-woocommerce-free/advanced-coupons-for-woocommerce-free.php', // Adjust the path if needed
+        'woocommerce-product-filters/woocommerce-product-filters.php', // Adjust the path if needed
+		'woocommerce-additional-variation-images/woocommerce-additional-variation-images.php',
+		'woocommerce-product-addons/woocommerce-product-addons.php',
+		'woocommerce/woocommerce.php',
+    ];
+
+    // Check if the URL is under /shop-online/ or has the ?s= parameter
+    if (strpos($current_url, '/shop-online/') === false && !isset($_GET['s'])) {
+        // Remove the specified plugins
+        foreach ($plugins_to_disable as $plugin) {
+            if (isset($plugins[$plugin])) {
+                unset($plugins[$plugin]);
+            }
+        }
+
+        // Prevent their CSS and JS from loading
+        add_action('wp_enqueue_scripts', function () {
+            // List all known styles and scripts that the plugins load
+            wp_dequeue_style('acfwf-wc-cart-block-integration'); // Replace with actual style handle
+			wp_dequeue_style('acfwf-wc-checkout-block-integration'); // Replace with actual style handle
+			wp_dequeue_style('acfw-blocks-frontend'); // Replace with actual style handle			
+			wp_dequeue_style('wcpf-plugin-style'); // Replace with actual style handle		
+			wp_dequeue_style('woocommerce-inline'); // Replace with actual style handle
+			wp_dequeue_style('wcpf-plugin-style'); // Replace with actual style handle	
+			wp_dequeue_style('brands-styles'); // Replace with actual style handle
+			wp_dequeue_style('filebird-block-filebird-gallery-style'); // Replace with actual style handle
+            wp_dequeue_script('woocommerce-addons'); // Replace with actual script handle
+            wp_dequeue_script('woocommerce'); // Replace with actual script handle			
+			wp_dequeue_script('wcpf-plugin-vendor-script'); // Replace with actual script handle
+			wp_dequeue_script('wcpf-plugin-script'); // Replace with actual script handle
+			wp_dequeue_script('avada-woo-product-variations'); // Replace with actual script handle
+			wp_dequeue_script('wc_additional_variation_images_script'); // Replace with actual script handle
+			wp_dequeue_script('wc-add-to-cart'); // Replace with actual script handle			
+			wp_dequeue_script('avada-woocommerce'); // Replace with actual script handle	
+			wp_dequeue_script('avada-woo-products'); // Replace with actual script handle
+			wp_dequeue_script('avada-woo-product-images'); // Replace with actual script handle	
+			
+        }, 9999);
+    }
+
+    return $plugins;
+}
+add_filter('option_active_plugins', 'disable_plugins_and_assets_conditionally');
+
+
+
 // Remove Gutenberg Block Library CSS from loading on the frontend
 function smartwp_remove_wp_block_library_css(){
     wp_dequeue_style( 'wp-block-library' );
