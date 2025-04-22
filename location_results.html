@@ -1,0 +1,839 @@
+<!-- ✅ GOOGLE MAPS -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAocZIP0FFtGb2W8LpahfcwIGpdQTerRt0&libraries=places,geometry" async defer></script>
+
+<!-- ✅ FILTER BAR -->
+<div id="location-filters">
+  <input id="location-search" type="text" placeholder="Search nearby...">
+
+  <select id="radius-filter">
+    <option value="25" selected>25 miles</option>
+    <option value="50">50 miles</option>
+    <option value="150">150 miles</option>
+        <option value="550">Any Distance</option>
+  </select>
+
+  <select id="service-filter">
+    <option value="">Services</option>
+  </select>
+  <button id="location-search-btn">Search</button>
+
+</div>
+
+<!-- ✅ MAP -->
+<div id="custom-map" style="width: 100%; height: 500px;border-radius:20px"></div>
+
+<!-- ✅ LISTINGS + INFOBOX -->
+<div id="results-and-info" style="display: flex; gap: 2rem; margin-top: 2rem;">
+  <div id="location-list" style="width: 50%;"></div>
+
+  <div id="custom-infowindow" style="">
+    <h3 id="location-title">Welcome!</h3>
+    <p id="location-address">Search or zoom to see more info here.</p>
+    <p id="location-phone"></p>
+  </div>
+</div>
+
+<!-- ✅ MAP LOGIC -->
+<script>
+let allMarkers = [];
+let map;
+let markerCluster;
+let locations = [];
+let currentPage = 1;
+const resultsPerPage = 6;
+let selectedPlace = null;
+let activeMarker = null;
+let defaultIcon = null;
+let isSearchMode = false;
+let nameOnlyInfoWindow;
+let clusterMarkers = [];
+
+
+function renderCustomInfoBox(loc) {
+  const infobox = document.getElementById('custom-infowindow');
+  if (!loc) return;
+
+  const servicesList = (loc.services || [])
+    .map(s => `<li><a href="/${s.slug}">${s.title}</a></li>`)
+    .join('');
+
+  const addressLine1 = loc.address || '';
+  const addressLine2 = `${loc.city || ''}, ${loc.state_abbr || ''} ${loc.zip || ''}`;
+   const fallbackImage = '/wp-content/themes/hello-theme-child-master/images/Location-Default.png';
+
+  // Extract image URL from <img> tag if needed
+  let imageUrl = fallbackImage;
+  if (loc.thumb) {
+    if (loc.thumb.includes('<img')) {
+      const match = loc.thumb.match(/src=["']([^"']+)["']/);
+      if (match && match[1]) {
+        imageUrl = match[1];
+      }
+    } else {
+      imageUrl = loc.thumb;
+    }
+  }
+
+  const html = `
+    <div class="infowindow-wrapper" style="font-family: 'Inter', sans-serif;border-radius: 15px;margin: 0 1.5rem 1.5rem 1.5rem;background: white;box-shadow: 0 0px 14px #80808054;">
+      <div style="background-image: url('${imageUrl}'); background-size: cover; background-position: center; min-height: 10rem; border-radius: 15px 15px 0 0; position: relative;">
+        <div style="position: absolute;bottom: 0;right: 0;background: var(--e-global-color-primary);color: #fff;padding: 0.5rem 1rem;border-radius: 20px 0 0 0;font-weight: 600;width:150px; text-align:center;">Clinic Info</div>
+      </div>
+     <div style="padding:3rem 3rem 3rem 4rem"> <h2 style="color: #204B80; margin-bottom: 0.75rem; font-size: 2.25rem; font-weight: 600;">${loc.name}</h2>
+      <ul class="services-offered" style="display: flex; flex-wrap: wrap; gap: 1.25rem; margin: 0 0 3rem 0;">
+        ${servicesList}
+      </ul>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 2rem; flex: 1;">
+        <div style="flex: 1; min-width: 220px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.4;">Welcome to Curis Functional Health in <strong>${loc.name}</strong>.</p>
+          </div>
+          <a href="${loc.permalink || '#'}"  style="font-size: 1rem; font-weight: 500; color: inherit;  display: inline-flex; align-items: center; gap: 0.5rem;">
+  Learn More
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" style="fill: var(--e-global-color-accent);height: 12px;margin-left: 5px;margin-top: 2px;"><defs><clipPath id="arrow-clip"><rect width="18" height="18" style="fill:none;" /></clipPath></defs><g style="clip-path:url(#arrow-clip);"><path d="M.96,18c-.25,0-.49-.09-.68-.28-.38-.38-.38-.99,0-1.36L16.35.28c.38-.38.99-.38,1.36,0,.38.38.38.99,0,1.36L1.65,17.72c-.19.19-.43.28-.68.28h0Z"/><path d="M17.04,18c-.53,0-.96-.43-.96-.96V1.93H.96c-.53,0-.96-.43-.96-.96s.43-.96.96-.96h16.07c.53,0,.96.43.96.96v16.07c0,.53-.43.96-.96.96Z"/></g></svg>
+</a>
+        </div>
+        <div style="flex: 1; min-width: 220px; font-size: .875rem; line-height: 1.25; border-left: 1px solid #888888; padding-left: 3rem;">
+          <ul style="list-style: none; padding-left:0; margin: 0;">
+            ${(addressLine1 || addressLine2) ? `
+  <li style="display: flex; align-items: start; margin-bottom: 0.5rem;">
+    <span style="display:inline-block; width: 12px; height: 12px; background-color: var(--e-global-color-accent); border-radius: 50%; margin-right: 20px; margin-top: 0.1rem;"></span>
+    <span>
+      ${addressLine1 || ''}${addressLine1 && addressLine2 ? '<br>' : ''}${addressLine2 || ''}
+    </span>
+  </li>` : ''
+}            ${loc.phone ? `<li style="display: flex; align-items: start; margin-bottom: 0.5rem;"><span style="display:inline-block; width: 12px; height: 12px; background-color: var(--e-global-color-accent); border-radius: 50%; margin-right: 20px; margin-top: 0.1rem;"></span><span>Phone: ${loc.phone}</span></li>` : ''}
+            ${loc.fax ? `<li style="display: flex; align-items: start; margin-bottom: 0.5rem;"><span style="display:inline-block; width: 12px; height: 12px; background-color: var(--e-global-color-accent); border-radius: 50%; margin-right: 20px; margin-top: 0.1rem;"></span><span>Fax: ${loc.fax}</span></li>` : ''}
+            ${loc.email ? `<li style="display: flex; align-items: start; margin-bottom: 0.5rem;"><span style="display:inline-block; width: 12px; height: 12px; background-color: var(--e-global-color-accent); border-radius: 50%; margin-right: 20px; margin-top: 0.1rem;"></span><span>${loc.email}</span></li>` : ''}
+            <li style="display: flex; align-items: start; margin-bottom: 0.5rem;"><span style="display:inline-block; width: 12px; height: 12px; background-color: var(--e-global-color-accent); border-radius: 50%; margin-right: 20px; margin-top: 0.1rem;"></span><span>Business Hours</span></li>
+          </ul>
+        </div>
+      </div>
+</div>
+      <div style="display: flex; justify-content: space-between; gap: 2rem; background-color: #A6B8C933; padding: 2rem; border-radius:0 0 15px 15px;">
+        <a href="tel:${loc.phone || ''}" style="background: #204B80; color: white; text-align: center; padding: 1rem; border-radius: 40px; font-weight: 600; text-decoration: none; min-width: 200px; font-size: 1rem; line-height: 1;">Call Now</a>
+        <a href="${loc.permalink || '#'}#booking" style="border: 2px solid #204B80; color: #204B80; text-align: center; padding: 1rem; border-radius: 40px; font-weight: 600; text-decoration: none; min-width: 200px; font-size: 1rem; line-height: 1;">Booking Request</a>
+      </div>
+    </div>
+  `;
+
+  infobox.innerHTML = html;
+}
+
+function showInfoBoxFromLocal(loc) {
+  renderCustomInfoBox(loc);
+
+   nameOnlyInfoWindow.setContent(`
+   
+      ${loc.name}
+
+  `);
+
+  nameOnlyInfoWindow.setOptions({
+    pixelOffset: new google.maps.Size(0, 40) // pushes it 40px *below* the marker
+  });
+
+  nameOnlyInfoWindow.setPosition({
+    lat: parseFloat(loc.lat),
+    lng: parseFloat(loc.lng)
+  });
+
+  nameOnlyInfoWindow.open(map);
+}
+
+function showInfoBoxFromTemplate(locationId) {
+  const loc = locations.find(l => l.id == locationId);
+  if (loc) {
+    renderCustomInfoBox(loc);
+  }
+}{
+  const loc = locations.find(l => l.id == locationId);
+  if (loc) {
+    renderCustomInfoBox(loc);
+  }
+}
+function initCustomMap() {
+  const input = document.getElementById('location-search');
+  const autocomplete = new google.maps.places.Autocomplete(input);
+  
+    nameOnlyInfoWindow = new google.maps.InfoWindow();
+
+  autocomplete.addListener('place_changed', () => {
+    selectedPlace = autocomplete.getPlace();
+  });
+
+  map = new google.maps.Map(document.getElementById('custom-map'), {
+  zoom: 5,
+  center: { lat: 37.679376, lng: -96.361736 },
+  zoomControl: true,
+  styles: [
+    {
+        "featureType": "administrative.neighborhood",
+        "elementType": "labels.text.fill",
+        "stylers": [
+            {
+                "weight": "4"
+            },
+            {
+                "visibility": "on"
+            },
+            {
+                "color": "#405e3b"
+            }
+        ]
+    },
+    {
+        "featureType": "landscape.man_made",
+        "elementType": "all",
+        "stylers": [
+            {
+                "lightness": "80"
+            },
+            {
+                "saturation": "52"
+            }
+        ]
+    },
+    {
+        "featureType": "landscape.natural",
+        "elementType": "all",
+        "stylers": [
+            {
+                "hue": "#70ff00"
+            },
+            {
+                "lightness": "8"
+            },
+            {
+                "saturation": "-28"
+            }
+        ]
+    },
+    {
+        "featureType": "landscape.natural.terrain",
+        "elementType": "all",
+        "stylers": [
+            {
+                "color": "#405e3b"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.attraction",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.business",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "on"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.business",
+        "elementType": "geometry.stroke",
+        "stylers": [
+            {
+                "visibility": "on"
+            },
+            {
+                "color": "#d30b0b"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.business",
+        "elementType": "labels.text",
+        "stylers": [
+            {
+                "visibility": "on"
+            },
+            {
+                "saturation": "-30"
+            },
+            {
+                "lightness": "0"
+            },
+            {
+                "gamma": "1.5"
+            },
+            {
+                "weight": "4.20"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.business",
+        "elementType": "labels.text.stroke",
+        "stylers": [
+            {
+                "color": "#ffffff"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.business",
+        "elementType": "labels.icon",
+        "stylers": [
+            {
+                "visibility": "on"
+            },
+            {
+                "lightness": "10"
+            },
+            {
+                "saturation": "-30"
+            },
+            {
+                "weight": "0.01"
+            },
+            {
+                "gamma": "1.5"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.government",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.park",
+        "elementType": "geometry.fill",
+        "stylers": [
+            {
+                "color": "#bbe9b3"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.place_of_worship",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "poi.place_of_worship",
+        "elementType": "labels",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "road",
+        "elementType": "geometry.stroke",
+        "stylers": [
+            {
+                "weight": "2.67"
+            }
+        ]
+    },
+    {
+        "featureType": "road.highway",
+        "elementType": "geometry.fill",
+        "stylers": [
+            {
+                "color": "#e7b75f"
+            }
+        ]
+    },
+    {
+        "featureType": "road.highway",
+        "elementType": "geometry.stroke",
+        "stylers": [
+            {
+                "color": "#f6ecce"
+            }
+        ]
+    },
+    {
+        "featureType": "road.arterial",
+        "elementType": "geometry.stroke",
+        "stylers": [
+            {
+                "weight": "3.00"
+            },
+            {
+                "visibility": "on"
+            },
+            {
+                "color": "#ffffff"
+            }
+        ]
+    },
+    {
+        "featureType": "road.local",
+        "elementType": "geometry.stroke",
+        "stylers": [
+            {
+                "color": "#ffffff"
+            },
+            {
+                "weight": "3.00"
+            }
+        ]
+    },
+    {
+        "featureType": "water",
+        "elementType": "geometry.fill",
+        "stylers": [
+            {
+                "color": "#a3cdfe"
+            },
+            {
+                "lightness": "15"
+            }
+        ]
+    }
+  ]
+
+});
+
+  locations = window.myStoreData || [];
+
+  populateServiceFilter();
+  renderMarkers(locations);
+  renderLocationList(getLocationsInBounds());
+
+  let triggeredByZoom = false;
+
+  google.maps.event.addListener(map, 'zoom_changed', () => {
+    triggeredByZoom = true;
+  });
+
+  map.addListener('idle', () => {
+    if (triggeredByZoom) {
+      const center = map.getCenter();
+      const closest = getClosestLocation(center);
+      if (closest) {
+        showInfoBoxFromLocal(closest);
+      }
+      triggeredByZoom = false;
+    }
+
+    if (!isSearchMode) {
+      renderLocationList(getLocationsInBounds());
+    }
+  });
+
+  document.getElementById('location-search-btn').addEventListener('click', () => {
+    triggeredByZoom = true;
+    performSearch();
+  });
+
+  document.getElementById('service-filter').addEventListener('change', () => {
+    performSearch();
+  });
+}
+
+function populateServiceFilter() {
+  const serviceFilter = document.getElementById('service-filter');
+  serviceFilter.innerHTML = '<option value="">Service</option>';
+
+  if (window.myServices) {
+    Object.entries(window.myServices).forEach(([slug, title]) => {
+      const option = document.createElement('option');
+      option.value = slug;
+      option.textContent = title;
+      serviceFilter.appendChild(option);
+    });
+  }
+}
+
+function getLocationsInBounds() {
+  const bounds = map.getBounds();
+  if (!bounds) return locations;
+  return locations.filter(loc => {
+    const latLng = new google.maps.LatLng(parseFloat(loc.lat), parseFloat(loc.lng));
+    return bounds.contains(latLng);
+  });
+}
+
+function animateBounce(marker, height = 20, duration = 1000) {
+  const originalPosition = marker.getPosition();
+  const startTime = performance.now();
+
+  function step(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = (elapsed % duration) / duration;
+    const bounce = Math.sin(progress * Math.PI); // bounce up and down
+
+    const latOffset = (height * bounce) / 111320; // convert px to lat
+    const newPosition = {
+      lat: originalPosition.lat() + latOffset,
+      lng: originalPosition.lng()
+    };
+
+    marker.setPosition(newPosition);
+
+    if (elapsed < duration * 1.5) {
+      requestAnimationFrame(step);
+    } else {
+      marker.setPosition(originalPosition);
+    }
+  }
+
+  requestAnimationFrame(step);
+}
+
+
+function renderMarkers(list) {
+  clearMarkers();
+
+const customSvg = {
+  url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26.28 38.53">
+      <path d="M24.75,6.46C22.41,2.48,17.86,0,12.87,0c-.62,0-1.26.04-1.88.12C4.53.93-.58,7.27.05,13.68c.28,2.87,3.08,6.87,5.54,10.39,1.3,1.86,2.53,3.62,3.27,5.03,1.4,2.65,2.54,5.66,3.3,8.7.06.3.34.72.91.72.5,0,.8-.35.89-.68.31-.84.59-1.69.87-2.52.63-1.89,1.29-3.85,2.2-5.67,1.13-2.27,2.64-4.35,4.09-6.37,1.21-1.68,2.46-3.41,3.48-5.23,2.19-3.9,2.24-8.02.14-11.6Z" fill="#fff"/>
+      <path d="M24.17,17.81c-2.22,3.96-5.49,7.41-7.58,11.62-1.32,2.65-2.09,5.5-3.1,8.27,0,0-.07.33-.41.33-.37,0-.42-.33-.42-.33-.75-3.03-1.9-6.08-3.35-8.83C7.13,24.72.97,17.83.55,13.63-.06,7.49,4.96,1.38,11.05.61c.61-.08,1.22-.11,1.82-.11,9.07,0,16.22,8.54,11.3,17.31Z" fill="#1F4C7A"/>
+      <path d="M14.31,10.71c.08-.11.08.06.06.11l-.06.19c0,.06,0,0-.03.14-.14.47-.36.88-.63,1.27-.28.36-.58.69-.85,1.05-.19.22-.39.44-.55.69-.25.36-.28.74-.08,1.16.17.39.47.55.88.5.85-.14,1.6-.52,2.15-1.24.69-.91.91-1.96.77-3.06-.11-.83-.39-1.6-.8-2.34-.14-.25-.28-.52-.47-.74-.06,0-.06.03-.08.06-.66.72-1.38,1.35-2.2,1.87-.33.22-.69.41-.99.69-.72.66-1.05,1.49-.99,2.45.06.72.39,1.32.83,1.87.14.19.3.39.52.52,0-.06-.06-.14-.08-.19-.11-.19-.17-.39-.22-.58-.14-.47-.03-.88.28-1.24.17-.22.36-.41.58-.58.3-.28.58-.55.85-.85.41-.47.74-.99,1.07-1.49l.14-.25h-.08Z" fill="#fff"/>
+      <path d="M19.17,17.13c-1.13,1.54-2.56,2.56-4.47,2.87-1.96.3-3.8-.06-5.48-1.13-1.85-1.16-2.89-2.81-3.28-4.91-.28-1.52-.17-3,.39-4.44.94-2.4,2.7-3.89,5.18-4.52,1.32-.33,2.67-.33,4,.03,1.52.44,2.67,1.32,3.58,2.59v.06c0,.06-.08.08-.14.11-.41.22-.8.44-1.21.69-.19.11-.17.11-.28-.06-.83-1.1-1.96-1.76-3.31-1.96-2.07-.28-4.44.58-5.68,2.87-.61,1.1-.8,2.32-.74,3.56.06,1.16.39,2.2,1.05,3.17.99,1.41,2.34,2.18,4.05,2.37,1.35.14,2.56-.19,3.64-.96.39-.28.72-.61.99-.99q.11-.17.28-.06c.47.25.91.5,1.41.77h0l.03-.06Z" fill="#fff"/>
+    </svg>
+  `),
+  scaledSize: new google.maps.Size(38, 38),
+  anchor: new google.maps.Point(19, 38)
+};
+
+
+  list.forEach((loc, index) => {
+  if (!loc.lat || !loc.lng) return;
+
+  const marker = new google.maps.Marker({
+    position: { lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) },
+    map,
+    title: '',
+    icon: customSvg
+  });
+
+  // Hover to activate marker and info window
+  marker.addListener('mouseover', () => {
+    if (window.innerWidth > 768) {
+      setActiveMarker(marker, loc); // Bounces and shows info
+    }
+  });
+
+  // Optional click if you want to re-show the info box
+  marker.addListener('click', () => {
+    setActiveMarker(marker, loc);
+  });
+
+  allMarkers.push(marker);
+});
+
+
+markerCluster = new markerClusterer.MarkerClusterer({
+  map,
+  markers: allMarkers,
+ renderer: {
+  render({ count, position, markers }) {
+    const color = count > 10 ? '#405E3B' : '#387bbf';
+
+    const base = 10;
+    const radius = base + Math.min(count, 10);
+    const r1 = radius;
+    const r2 = radius + 6;
+    const r3 = radius + 12;
+
+    const svg = window.btoa(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="${r3 * 2}" height="${r3 * 2}">
+        <circle cx="${r3}" cy="${r3}" r="${r3}" fill="${color}" fill-opacity="0.2"/>
+        <circle cx="${r3}" cy="${r3}" r="${r2}" fill="${color}" fill-opacity="0.4"/>
+        <circle cx="${r3}" cy="${r3}" r="${r1}" fill="${color}" fill-opacity="0.8" />
+        <text x="${r3}" y="${r3}" text-anchor="middle" fill="#fff" font-size="14" font-family="Inter, sans-serif" dy=".3em">${count}</text>
+      </svg>
+    `);
+
+    const marker = new google.maps.Marker({
+      position,
+      icon: {
+        url: 'data:image/svg+xml;base64,' + svg,
+        scaledSize: new google.maps.Size(r3 * 2, r3 * 2)
+      },
+      zIndex: google.maps.Marker.MAX_ZINDEX + count
+    });
+
+    // 💡 Attach the cluster DOM node to the markers it represents
+    marker._clusterMarkers = markers;
+
+    return marker;
+  }
+}
+});
+}
+
+function pulseClusterIfMarkerIsClustered(targetMarker) {
+  const clusters = markerCluster.getMarkers(); // Actually all cluster markers with `_clusterMarkers` attached
+
+  clusters.forEach(clusterMarker => {
+    const memberMarkers = clusterMarker._clusterMarkers || [];
+    if (memberMarkers.includes(targetMarker)) {
+      const icon = clusterMarker.getIcon();
+      const originalUrl = icon.url;
+
+      // Temporarily enlarge the icon to simulate a "pulse"
+      clusterMarker.setIcon({
+        ...icon,
+        scaledSize: new google.maps.Size(icon.scaledSize.width * 1.25, icon.scaledSize.height * 1.25)
+      });
+
+      setTimeout(() => {
+        clusterMarker.setIcon({
+          ...icon,
+          scaledSize: new google.maps.Size(icon.scaledSize.width, icon.scaledSize.height)
+        });
+      }, 300);
+    }
+  });
+}
+
+
+
+
+function setActiveMarker(marker, loc) {
+  if (activeMarker && activeMarker !== marker) {
+    activeMarker.setAnimation(null);
+  }
+
+  activeMarker = marker;
+  activeMarker.setAnimation(google.maps.Animation.BOUNCE);
+
+  if (loc) {
+    showInfoBoxFromLocal(loc);
+  }
+
+  // 💥 Pulse if clustered
+  pulseClusterIfMarkerIsClustered(marker);
+}
+
+
+
+
+
+function performSearch() {
+  const radius = parseInt(document.getElementById('radius-filter').value);
+  const selectedService = document.getElementById('service-filter').value;
+  const allLocations = window.myStoreData || [];
+
+  let center = map.getCenter();
+  const isPlaceSearch = typeof selectedPlace !== 'undefined' && selectedPlace?.geometry?.location;
+
+  isSearchMode = isPlaceSearch;
+
+  if (isPlaceSearch) {
+    center = selectedPlace.geometry.location;
+    map.setCenter(center);
+    map.setZoom(10);
+  }
+
+  const inRadius = [];
+  const nearby = [];
+
+  allLocations.forEach(loc => {
+    const lat = parseFloat(loc.lat);
+    const lng = parseFloat(loc.lng);
+    if (!lat || !lng) return;
+
+    const latLng = new google.maps.LatLng(lat, lng);
+    const distance = google.maps.geometry.spherical.computeDistanceBetween(center, latLng) * 0.000621371;
+    loc.distance = distance;
+
+    const matchesService = !selectedService || (loc.services || []).some(s => s.slug === selectedService);
+    const isInRadius = distance <= radius;
+
+    if (matchesService && isInRadius) {
+      inRadius.push({ ...loc, isOutsideRadius: false, isVisible: true });
+    } else {
+      nearby.push({ ...loc, isOutsideRadius: true, isVisible: false });
+    }
+  });
+
+  const allResults = [...inRadius, ...nearby];
+  const sortedInRadius = inRadius.sort((a, b) => a.distance - b.distance);
+  const sortedNearby = nearby.sort((a, b) => a.distance - b.distance).slice(0, 5);
+
+  locations = allResults;
+  currentPage = 1;
+
+  clearMarkers();
+  renderMarkers(allResults);
+  renderLocationList(sortedInRadius, sortedNearby);
+
+  if (inRadius.length > 0) {
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend(center);
+    inRadius.forEach(loc => {
+      bounds.extend(new google.maps.LatLng(parseFloat(loc.lat), parseFloat(loc.lng)));
+    });
+    map.fitBounds(bounds);
+  } else if (nearby.length > 0) {
+    map.setCenter(center);
+    map.setZoom(6);
+  } else {
+    map.setCenter(center);
+    map.setZoom(7);
+  }
+}
+
+
+
+function getClosestLocation(center) {
+  let minDist = Infinity;
+  let closest = null;
+
+  locations.forEach(loc => {
+    if (!loc.lat || !loc.lng) return;
+    const distance = google.maps.geometry.spherical.computeDistanceBetween(
+      center,
+      new google.maps.LatLng(parseFloat(loc.lat), parseFloat(loc.lng))
+    );
+    if (distance < minDist) {
+      minDist = distance;
+      closest = loc;
+    }
+  });
+
+  return closest;
+}
+
+function clearMarkers() {
+  allMarkers.forEach(marker => marker.setMap(null));
+  allMarkers = [];
+  if (markerCluster) markerCluster.clearMarkers();
+}
+
+function renderLocationList(inRadius = [], nearby = []) {
+  const container = document.getElementById('location-list');
+  let html = '';
+
+  if (inRadius.length) {
+    const totalPages = Math.ceil(inRadius.length / resultsPerPage);
+    const start = (currentPage - 1) * resultsPerPage;
+    const paginated = inRadius.slice(start, start + resultsPerPage);
+
+    html += `
+      <ul class="location-result-list">
+        ${paginated.map((loc, i) => renderLocationCard(loc, i)).join('')}
+      </ul>
+      <div class="pagination">
+        ${Array.from({ length: totalPages }, (_, i) => `
+          <button ${i + 1 === currentPage ? 'class="active"' : ''} onclick="changePage(${i + 1})">${i + 1}</button>
+        `).join('')}
+      </div>
+    `;
+  } else {
+    html += `<p>No locations in this area.</p>`;
+  }
+
+  if (nearby.length) {
+    html += `
+      <h4 style="margin-top:2rem;">Locations nearby:</h4>
+      <ul class="location-result-list nearby-dimmed">
+        ${nearby.map((loc, i) => renderLocationCard(loc, inRadius.length + i)).join('')}
+
+      </ul>
+    `;
+  }
+
+  container.innerHTML = html;
+  
+document.querySelectorAll('[data-marker-id]').forEach((item) => {
+  item.addEventListener('mouseenter', () => {
+    const markerId = parseInt(item.getAttribute('data-marker-id'));
+    const marker = allMarkers[markerId];
+    const loc = locations[markerId];
+    if (marker && loc) {
+      setActiveMarker(marker, loc); // Keep things unified
+    }
+  });
+});
+
+}
+
+function renderLocationCard(loc, index) {
+  const fallbackImage = '/wp-content/themes/hello-theme-child-master/images/Location-Default.png';
+
+  // If thumb includes <img, use it directly. Else, build an <img> tag.
+  const imageHtml = loc.thumb && loc.thumb.includes('<img')
+    ? loc.thumb
+    : `<img src="${loc.thumb || fallbackImage}" alt="${loc.name}" style="width: 100%; height: auto; object-fit: cover; border-radius: 8px;">`;
+
+  return `
+    <li data-location-id="${loc.id}" data-marker-id="${index}">
+      <div class="location-img">
+        ${imageHtml}
+      </div>
+      <div class="location-card" style="${loc.isOutsideRadius ? 'opacity: 0.5;' : ''}">
+        <div class="location-header location-2-col">
+          <h3 class="listing"><a href="${loc.permalink || '#'}">${loc.name}<span style="color: var(--e-global-color-primary););opacity: 0.25;">, ${loc.state_abbr}</span></a></h3>
+          ${loc.distance ? `<div class="location-distance">${loc.distance.toFixed(1)} Miles</div>` : ''}
+        </div>
+        <ul class="services-offered">
+          ${(loc.services || []).map(s => `<li><a href="/${s.slug}">${s.title}</a></li>`).join('')}
+        </ul>
+        <div class="location-2-col">
+          <div class="location-address">
+            <p>
+              ${loc.address || ''}<br>
+              ${loc.address2 ? `${loc.address2}<br>` : ''}
+              ${loc.city || ''}, ${loc.state_abbr || ''} ${loc.zip || ''}
+            </p>
+          </div>
+          <div class="location-contact">
+            ${loc.phone ? `<span>${loc.phone}</span><br>` : ''}
+            ${loc.email ? `<span>${loc.email}</span>` : ''}
+          </div>
+        </div>
+      </div>
+    </li>
+  `;
+}
+
+
+
+
+
+function changePage(page) {
+  currentPage = page;
+  renderLocationList(getLocationsInBounds());
+}
+
+function waitForGoogleMapsAndData() {
+  let tries = 0;
+  const interval = setInterval(() => {
+    tries++;
+    if (typeof google !== 'undefined' && google.maps && window.myStoreData) {
+      clearInterval(interval);
+      console.log('[Map] Google Maps and Location Data ready');
+      initCustomMap();
+    } else if (tries > 30) {
+      clearInterval(interval);
+      console.warn('[Map] Timeout waiting for Google Maps or data');
+    }
+  }, 200);
+}
+
+waitForGoogleMapsAndData();
+</script>
+
+
+
+
+
+<!-- ✅ CLUSTER LIBRARY -->
+<script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
